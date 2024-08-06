@@ -1,6 +1,6 @@
 /*----------------------------------------------------------------
   Raven Library Source Code
-  Copyright (c) 2008-2023 the Raven Development Team
+  Copyright (c) 2008-2024 the Raven Development Team
   ----------------------------------------------------------------*/
 
 #include "RavenInclude.h"
@@ -145,7 +145,7 @@ bool ParseInputFiles (CModel      *&pModel,
     ExitGracefully("Cannot find or read .rvt file",BAD_DATA);return false;
   }
 
-  //Ensemble file (.rve)
+  // Ensemble file (.rve)
   //--------------------------------------------------------------------------------
   if(pModel->GetEnsemble()->GetType()!=ENSEMBLE_NONE) {
     if(!ParseEnsembleFile(pModel,Options)) {
@@ -197,6 +197,7 @@ bool ParseMainInputFile (CModel     *&pModel,
 
   int               code;            //Parsing vars
   bool              ended(false);
+  bool              is_temp(false);
   int               Len,line(0);
   char             *s[MAXINPUTITEMS];
 
@@ -309,6 +310,7 @@ bool ParseMainInputFile (CModel     *&pModel,
   Options.write_constitmass       =false;
   Options.write_waterlevels       =false;
   Options.write_localflow         =false;
+  Options.write_netresinflow      =false;
   Options.suppressICs             =false;
   Options.period_ending           =false;
   Options.period_starting         =false;
@@ -506,7 +508,7 @@ bool ParseMainInputFile (CModel     *&pModel,
     else if  (!strcmp(s[0],":WriteWaterLevels"          )){code=182;}
     else if  (!strcmp(s[0],":WriteMassLoadings"         )){code=183;}
     else if  (!strcmp(s[0],":WriteLocalFlows"           )){code=184;}
-
+    else if  (!strcmp(s[0],":WriteNetReservoirInflows"  )){code=185;}
     //...
     //--------------------SYSTEM OPTIONS -----------------------
     else if  (!strcmp(s[0],":HyporheicLayer"            )){code=198;}
@@ -571,8 +573,8 @@ bool ParseMainInputFile (CModel     *&pModel,
     //--------------------TRANSPORT PROCESSES ---------------
     if       (in_ifmode_statement)                        {code=-6; }
     else if  (!strcmp(s[0],":Transport"                 )){code=300;}
-    else if  (!strcmp(s[0],":FixedConcentration"        )){code=301;}//After corresponding DefineHRUGroup(s) command, if used
-    else if  (!strcmp(s[0],":FixedTemperature"          )){code=301;}//After corresponding DefineHRUGroup(s) command, if used
+    else if  (!strcmp(s[0],":FixedConcentration"        )){code=301; is_temp=false;}//After corresponding DefineHRUGroup(s) command, if used
+    else if  (!strcmp(s[0],":FixedTemperature"          )){code=301; is_temp=true;}//After corresponding DefineHRUGroup(s) command, if used
     else if  (!strcmp(s[0],":MassInflux"                )){code=302;}//After corresponding DefineHRUGroup(s) command, if used
     else if  (!strcmp(s[0],":GeochemicalProcesses"      )){code=303;}
     else if  (!strcmp(s[0],":EndGeochemicalProcesses"   )){code=304;}
@@ -717,7 +719,7 @@ bool ParseMainInputFile (CModel     *&pModel,
       if (Options.noisy) {cout <<"Simulation Time Step"<<endl;}
       if (Len<2){ImproperFormatWarning(":TimeStep",p,Options.noisy); break;}
       string tString=s[1];
-      if ((tString.length()>=2) && ((tString.substr(2,1)==":") || (tString.substr(1,1)==":"))){//support for hh:mm:ss.00 format
+      if ((tString.length()>=3) && ((tString.substr(2,1)==":") || (tString.substr(1,1)==":"))){//support for hh:mm:ss.00 format
         time_struct tt;
         tt=DateStringToTimeStruct("0000-01-01",tString,Options.calendar);
         Options.timestep=FixTimestep(tt.julian_day);
@@ -1037,6 +1039,7 @@ bool ParseMainInputFile (CModel     *&pModel,
       else if (!strcmp(s[1],"UBC"                )){Options.wind_velocity=WINDVEL_UBCWM;}
       else if (!strcmp(s[1],"WINDVEL_CONSTANT"   )){Options.wind_velocity=WINDVEL_CONSTANT;}
       else if (!strcmp(s[1],"WINDVEL_DATA"       )){Options.wind_velocity=WINDVEL_DATA;}
+      else if (!strcmp(s[1],"WINDVEL_UBC"        )){Options.wind_velocity=WINDVEL_UBCWM;}
       else if (!strcmp(s[1],"WINDVEL_UBCWM"      )){Options.wind_velocity=WINDVEL_UBCWM;}
       else if (!strcmp(s[1],"WINDVEL_UBC_MOD"    )){Options.wind_velocity=WINDVEL_UBC_MOD;}
       else if (!strcmp(s[1],"WINDVEL_SQRT"       )){Options.wind_velocity=WINDVEL_SQRT;}
@@ -1564,7 +1567,7 @@ bool ParseMainInputFile (CModel     *&pModel,
       {
         invalid=false;pDiag=NULL;
         int width = DOESNT_EXIST;
-        string tmp = CStateVariable::SVStringBreak(s[i], width); //using other routine to grab width
+        string tmp = CStateVariable::SVStringBreak(s[i], width); //using other routine to grab width in brackets
         diag_type diag=StringToDiagnostic(tmp);
         if (diag != DIAG_UNRECOGNIZED) {
           pDiag=new CDiagnostic(diag,width);
@@ -1808,7 +1811,7 @@ bool ParseMainInputFile (CModel     *&pModel,
       int pp=pModel->GetSubBasinGroup(s[1])->GetGlobalIndex();
       CCustomTable *pTab=new CCustomTable(s[2],pp,pModel);
 
-      while ((Len==0) || (strcmp(s[0],":EndHRUGroup")))
+      while ((Len==0) || (strcmp(s[0],":EndCustomTable")))
       {
         p->Tokenize(s,Len);
         if      (IsComment(s[0], Len)){}//comment or blank line
@@ -2056,6 +2059,12 @@ bool ParseMainInputFile (CModel     *&pModel,
     {/*:WriteLocalFlows*/
       if(Options.noisy) { cout << "Write local flows to hydrographs file" << endl; }
       Options.write_localflow=true;
+      break;
+    }
+    case(185):  //--------------------------------------------
+    {/*:WriteNetReservoirInflows*/
+      if(Options.noisy) { cout << "Write net reservoir inflows to hydrographs file" << endl; }
+      Options.write_netresinflow=true;
       break;
     }
     case(198):  //--------------------------------------------
@@ -2528,7 +2537,7 @@ bool ParseMainInputFile (CModel     *&pModel,
        :SnowSqueeze SQUEEZE_RAVEN SNOW_LIQ [state_var to_index]*/
       if (Options.noisy){cout <<"Liquid Snow Release Process"<<endl;}
       if (Len<4){ImproperFormatWarning(":SnowSqueeze",p,Options.noisy); break;}
-      FromToErrorCheck(":LakeEvaporation",s[2],s[3],SNOW_LIQ,USERSPEC_SVTYPE,pModel,pStateVar);
+      FromToErrorCheck(":SnowSqueeze",s[2],s[3],SNOW_LIQ,USERSPEC_SVTYPE,pModel,pStateVar);
       CmvSnowSqueeze::GetParticipatingStateVarList(tmpS,tmpLev,tmpN);
       pModel->AddStateVariables(tmpS,tmpLev,tmpN);
       tmpS[0] = pStateVar->StringToSVType(s[3], tmpLev[0], true);
@@ -3159,7 +3168,10 @@ bool ParseMainInputFile (CModel     *&pModel,
 
     case (301)://----------------------------------------------
     {/*:FixedConcentration or :FixedTemperature
-       :FixedConcentration [string constit_name] [string state_var (storage compartment)] [double concentration (mg/l) or double temperature (C) or .rvt file name] {optional HRU Group name}*/
+       :FixedConcentration [string constit_name] [string state_var (storage compartment)] [double concentration (mg/l) or .rvt file name] {optional HRU Group name}
+       :FixedTemperature [string state_var (storage compartment)] [double temperature (C) or .rvt file name] {optional HRU Group name}
+       :FixedConcentration O18 [string state_var (storage compartment)] [double concentration (mg/l) or .rvt file name] [double concentration2 (mg/l) or .rvt filename] {optional HRU Group name}
+       */
       if (Options.noisy){cout <<"Fixed concentration or temperature transport constituent"<<endl;}
 
       if (!transprepared){
@@ -3168,23 +3180,32 @@ bool ParseMainInputFile (CModel     *&pModel,
       }
       int layer_ind;
       int i_stor;
-      sv_type typ = pStateVar->StringToSVType(s[2],layer_ind,false);
+      int add=0;int add2=0;
+      bool is_isotope(false);
+      if (is_temp){add=-1;}
+      sv_type typ = pStateVar->StringToSVType(s[2+add],layer_ind,false);
       if (typ==UNRECOGNIZED_SVTYPE){
         WriteWarning(":FixedConcentration/:FixedTemperature command: unrecognized storage variable name: "+to_string(s[2]),Options.noisy);
         break;
       }
       i_stor=pModel->GetStateVarIndex(typ,layer_ind);
       if (i_stor != DOESNT_EXIST){
-        int c=pModel->GetTransportModel()->GetConstituentIndex(s[1]);
-        int add=0;
+        int c;
+
+        if (is_temp) {
+          c=pModel->GetTransportModel()->GetConstituentIndex("TEMPERATURE");
+        }
+        else {
+          c=pModel->GetTransportModel()->GetConstituentIndex(s[1]);
+        }
         if (pModel->GetTransportModel()->GetConstituentModel(c)->GetType()==ISOTOPE){
-          add=1;
+          add2=1;
         }
         if(c!=DOESNT_EXIST) {
           int kk = DOESNT_EXIST;
-          if (Len > 4+add){
+          if (Len > 4+add+add2){
             CHRUGroup *pSourceGrp;
-            pSourceGrp = pModel->GetHRUGroup(s[4+add]);
+            pSourceGrp = pModel->GetHRUGroup(s[4+add+add2]);
             if (pSourceGrp == NULL){
               ExitGracefully("Invalid HRU Group name supplied in :FixedConcentration/:FixedTemperature command in .rvi file", BAD_DATA_WARN);
               break;
@@ -3194,14 +3215,16 @@ bool ParseMainInputFile (CModel     *&pModel,
             }
           }
 
-          double C2=s_to_d(s[3]);
-          if ((add==1) && (Len>=5)){C2=s_to_d(s[4]);} // for isotope
-          pModel->GetTransportModel()->GetConstituentModel(c)->AddDirichletCompartment(i_stor,kk,s_to_d(s[3]),C2);
+          double C1=s_to_d(s[3+add]);
+          double C2=s_to_d(s[3+add]);
+          if ((add2==1) && (Len>=5)){C2=s_to_d(s[5]);} // for isotope
+          pModel->GetTransportModel()->GetConstituentModel(c)->AddDirichletCompartment(i_stor,kk,C1,C2);
+          //if time series is specified, s_to_d(time series file) returns zero
         }
         else {
           ExitGracefully("ParseMainInputFile: invalid constiuent in :FixedConcentration/:FixedTemperature command in .rvi file",BAD_DATA_WARN);
         }
-        //if time series is specified, s_to_d(time series file) returns zero
+
       }
       else{
         string warn=":FixedConcentration command: invalid state variable name"+to_string(s[2]);

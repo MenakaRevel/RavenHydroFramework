@@ -293,6 +293,7 @@ bool ParseHRUPropsFile(CModel *&pModel, const optStruct &Options, bool terrain_r
 
           HRU_type HRUtype=HRU_STANDARD;
           if (!pSoilProfile->GetTag().substr(0,4).compare("LAKE"    )){HRUtype=HRU_LAKE;   }
+          if (!pSoilProfile->GetTag().substr(0,5).compare("WATER"   )){HRUtype=HRU_WATER;  }
           if (!pSoilProfile->GetTag().substr(0,7).compare("GLACIER" )){HRUtype=HRU_GLACIER;}
           if (!pSoilProfile->GetTag().substr(0,4).compare("ROCK"    )){HRUtype=HRU_ROCK;   }
           if (!pSoilProfile->GetTag().substr(0,8).compare("PAVEMENT")){HRUtype=HRU_ROCK;   }
@@ -457,9 +458,10 @@ bool ParseHRUPropsFile(CModel *&pModel, const optStruct &Options, bool terrain_r
         pHRUGrp=new CHRUGroup(s[1],pModel->GetNumHRUGroups());
         pModel->AddHRUGroup(pHRUGrp);
       }
-      while ((Len==0) || (strcmp(s[0],":EndHRUGroup")))
+      bool eof=false;
+      while (((Len==0) || (strcmp(s[0],":EndHRUGroup"))) && (!eof))
       {
-        pp->Tokenize(s,Len);
+        eof=pp->Tokenize(s,Len);
         if      (IsComment(s[0], Len)){}//comment line
         else if (!strcmp(s[0],":EndHRUGroup")){}//done
         else if (s[0][0] == ':') {
@@ -609,6 +611,7 @@ bool ParseHRUPropsFile(CModel *&pModel, const optStruct &Options, bool terrain_r
             if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_ROCK) && (!strcmp(s[4],"PAVEMENT"))) { pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
             if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_GLACIER) && (!strcmp(s[4],"GLACIER"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
             if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_LAKE) && (!strcmp(s[4],"LAKE"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
+            if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_WATER) && (!strcmp(s[4],"WATER"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
           }
         }
         if(!strcmp(s[4],"DOESNTEQUAL")){
@@ -618,6 +621,7 @@ bool ParseHRUPropsFile(CModel *&pModel, const optStruct &Options, bool terrain_r
             if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_ROCK) && (!strcmp(s[4],"PAVEMENT"))) { pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
             if((pModel->GetHydroUnit(k)->GetHRUType()!=HRU_GLACIER) && (!strcmp(s[4],"GLACIER"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
             if((pModel->GetHydroUnit(k)->GetHRUType()!=HRU_LAKE) && (!strcmp(s[4],"LAKE"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
+            if((pModel->GetHydroUnit(k)->GetHRUType()==HRU_WATER) && (!strcmp(s[4],"WATER"))){ pHRUGrp->AddHRU(pModel->GetHydroUnit(k)); }
           }
         }
       }
@@ -1616,8 +1620,8 @@ CReservoir *ReservoirParse(CParser *p,string name,const CModel *pModel,long long
       p->Tokenize(s,Len); //:EndVaryingStageRelations
     }
     //----------------------------------------------------------------------------------------------
-    else if(!strcmp(s[0],":DZTRResservoirModel"))
-    {/*:DZTRResservoirModel
+    else if ((!strcmp(s[0],":DZTRResservoirModel")) || (!strcmp(s[0],":DZTRReservoirModel")))
+    {/*:DZTRReservoirModel
        :MaximumStorage           Vmax(m3)
        :MaximumChannelDischarge  Qmax(m3/s)
        :MonthlyMaxStorage        J F M A M J J A S N D  {or single constant value} (m3)
@@ -1663,9 +1667,7 @@ CReservoir *ReservoirParse(CParser *p,string name,const CModel *pModel,long long
       if    (Len>=13) { for(int i=0;i<12;i++) { Qci[i]=s_to_d(s[i+1]); } }
       else if(Len>=2) { for(int i=0;i<12;i++) { Qci[i]=s_to_d(s[1]); } }
 
-      p->Tokenize(s,Len); //:EndDZTR
-
-      break;
+      p->Tokenize(s,Len); //:EndDZTRReservoirModel
     }
     //----------------------------------------------------------------------------------------------
     else if (!strcmp(s[0], ":OutflowControlStructure")) {
@@ -1869,6 +1871,7 @@ CReservoir *ReservoirParse(CParser *p,string name,const CModel *pModel,long long
       if(Options.noisy) { cout << ":EndReservoir" << endl; }
       break;
     }
+    //----------------------------------------------------------------------------------------------
     else {
       WriteWarning("Reservoir::Parse: unrecognized command (" + to_string(s[0]) + ") in :Reservoir-:EndReservoir Block",Options.noisy);
     }

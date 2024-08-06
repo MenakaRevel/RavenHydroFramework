@@ -212,6 +212,7 @@ double  CConstituentModel::GetSpecifiedMassFlux(const int i_stor,const int k,con
 /// \param i_stor [in] global index of water storage state variable
 /// \param kk [in] HRU group index (or -1 if this applies to all HRUs)
 /// \param Cs [in] Dirichlet source concentration [mg/L] or temperature [C]
+/// \param Cs2 [in] duplicate Dirichlet source concentration [mg/L] or temperature [C], but not duplicate for Isotope
 //
 void   CConstituentModel::AddDirichletCompartment(const int i_stor,const int kk,const double Cs, const double Cs2)
 {
@@ -1352,7 +1353,12 @@ void CConstituentModel::WriteMinorOutput(const optStruct &Options,const time_str
       if(pBasin->IsGauged() && (pBasin->IsEnabled()))
       {
         Q=pBasin->GetOutflowRate();
-        if (Q<REAL_SMALL){_POLLUT<<",,";}
+        if (Q<REAL_SMALL){
+          _POLLUT<<",";
+          if(_type==ENTHALPY) {
+            _POLLUT<<",";
+          }
+        }
         else             {
           _POLLUT<<","<<GetOutflowConcentration(p);
           if(_type==ENTHALPY) {

@@ -476,8 +476,11 @@ double CSubBasin::GetTotalWaterDemand(const double &t) const
   double Qirr;
   for (int ii=0;ii<_nIrrigDemands;ii++)
   {
+    //Qirr=_pWaterDemands[ii]->GetDemand();
+
     Qirr=_pIrrigDemands[ii]->GetValue(t);
     if (Qirr==RAV_BLANK_DATA){Qirr=0.0;}
+
     sum+=Qirr;
   }
   return sum;
@@ -489,9 +492,17 @@ double CSubBasin::GetTotalWaterDemand(const double &t) const
 //
 double CSubBasin::GetWaterDemand(const int ii, const double &t) const
 {
+#ifdef _STRICTCHECK_
+  ExitGracefullyIf(ii < 0 || ii >= _nWaterDemands, "CSubBasin::GetWaterDemandID: invalid index",RUNTIME_ERR);
+#endif
+
+  //return _pWaterDemands[ii]->GetDemand();
+
   double Qirr;
+
   Qirr=_pIrrigDemands[ii]->GetValue(t);
   if (Qirr==RAV_BLANK_DATA){Qirr=0.0;}
+
   return Qirr;
 }
 //////////////////////////////////////////////////////////////////
@@ -787,6 +798,7 @@ int CSubBasin::GetWaterDemandID     (const int ii) const
 #ifdef _STRICTCHECK_
   ExitGracefullyIf(ii < 0 || ii >= _nWaterDemands, "CSubBasin::GetWaterDemandID: invalid index",RUNTIME_ERR);
 #endif
+  //return _pWaterDemands[ii]->GetID();
   return _pIrrigDemands[ii]->GetIDTag(); //stores demand ID
 }
 //////////////////////////////////////////////////////////////////
@@ -798,6 +810,7 @@ string CSubBasin::GetWaterDemandName   (const int ii) const
 #ifdef _STRICTCHECK_
   ExitGracefullyIf(ii < 0 || ii >= _nWaterDemands, "CSubBasin::GetWaterDemandName: invalid index",RUNTIME_ERR);
 #endif
+  //return _pWaterDemands[ii]->GetName();
   return _pIrrigDemands[ii]->GetName();
 }
 //////////////////////////////////////////////////////////////////
@@ -812,7 +825,7 @@ double    CSubBasin::GetOutflowRate   () const
 
 //////////////////////////////////////////////////////////////////
 /// \brief Returns Outflow from channel reach (even if reservoir present) before diversions at start of current timestep (during solution) or end of completed timestep [m^3/s]
-/// \note used for calculating flow diversions 
+/// \note used for calculating flow diversions
 /// \return Channel outflow at start of current timestep (during solution) or end of completed timestep [m^3/s]
 //
 double    CSubBasin::GetChannelOutflowRate   () const
@@ -821,7 +834,7 @@ double    CSubBasin::GetChannelOutflowRate   () const
 }
 //////////////////////////////////////////////////////////////////
 /// \brief Returns Outflow from channel reach (even if reservoir present) before diversions at start of current timestep (during solution) or end of completed timestep [m^3/s]
-/// \note used for calculating flow diversions 
+/// \note used for calculating flow diversions
 /// \return Channel outflow at start of current timestep (during solution) or end of completed timestep [m^3/s]
 //
 double    CSubBasin::GetLastChannelOutflowRate   () const
@@ -1211,9 +1224,12 @@ void    CSubBasin::AddDownstreamInflow (CTimeSeries *pInflow)
 /// \param *pInflow pointer to Inflow time series to be added
 //
 void    CSubBasin::AddIrrigationDemand(CTimeSeries *pOutflow)
+//void    CSubBasin::AddWaterDemand(CDemand *pDemand)
 {
   if (!DynArrayAppend((void**&)(_pIrrigDemands),(void*)(pOutflow),_nIrrigDemands)){
     ExitGracefully("CSubBasin::AddIrrigationDemand: trying to add NULL regime",BAD_DATA);}
+  //if (!DynArrayAppend((void**&)(_pWaterDemands),(void*)(pDemand),_nIrrigDemands)){
+  //  ExitGracefully("CSubBasin::AddIrrigationDemand: trying to add NULL regime",BAD_DATA);}
 }
 //////////////////////////////////////////////////////////////////
 /// \brief Adds minimum enviro flow time series
@@ -1607,6 +1623,7 @@ void CSubBasin::Initialize(const double    &Qin_avg,          //[m3/s] from upst
   }
   for (int ii=0;ii<_nIrrigDemands;ii++){
     _pIrrigDemands[ii]->Initialize(Options.julian_start_day,Options.julian_start_year,Options.duration,Options.timestep,false,Options.calendar);
+    //_pWaterDemands[ii]->Initialize(Options);
   }
   _aQdelivered=new double [_nIrrigDemands];
 
@@ -1888,8 +1905,9 @@ void CSubBasin::GenerateCatchmentHydrograph(const double    &Qlat_avg,
       t=n*tstep-_t_lag;
       _aUnitHydro[n]=GammaCumDist(t+tstep,alpha, beta)-sum;
 
-      ExitGracefullyIf(!_finite(_aUnitHydro[n]),
-                       "GenerateCatchmentHydrograph: issues with gamma distribution. Time to peak may be too small relative to timestep",RUNTIME_ERR);
+      //ExitGracefullyIf(!_finite(_aUnitHydro[n]),
+      ExitGracefullyIf(_aUnitHydro[n]>ALMOST_INF,
+        "GenerateCatchmentHydrograph: issues with gamma distribution. Time to peak may be too small relative to timestep",RUNTIME_ERR);
 
       sum+=_aUnitHydro[n];
     }
@@ -1989,7 +2007,7 @@ void CSubBasin::UpdateOutflows   (const double         *aQo,    //[m3/s]
   }
   double irrQ_act = min(irr_Q, _aQout[_nSegments-1]);
   _aQout[_nSegments-1]-=irrQ_act;
-  
+
   double divQ_act = min(Qdiv, _aQout[_nSegments-1]);
   _aQout[_nSegments-1]-=divQ_act;
 
@@ -2003,8 +2021,9 @@ void CSubBasin::UpdateOutflows   (const double         *aQo,    //[m3/s]
   if (!Options.management_optimization){
     if (_nIrrigDemands>1){ //distribute delivery based upon percentage of total demand, otherwise this is provided by AddToDeliveredDemand()
       for (int ii = 0; ii < _nIrrigDemands; ii++) {
-          double demand=_pIrrigDemands[ii]->GetValue(tt.model_time);
-          if (demand==RAV_BLANK_DATA){demand=0.0;}
+        double demand=_pIrrigDemands[ii]->GetValue(tt.model_time);
+        if (demand==RAV_BLANK_DATA){demand=0.0;}
+        //double demand=_pWaterDemands[ii]->GetDemand();
 
         _aQdelivered[ii]=_Qirr*(demand/GetTotalWaterDemand(tt.model_time));
       }
@@ -2044,9 +2063,9 @@ void CSubBasin::UpdateOutflows   (const double         *aQo,    //[m3/s]
   //volume change from irrigation
   dV-=0.5*(_Qirr+_QirrLast)*dt;
 
-  //volume change from diversion 
+  //volume change from diversion
   dV-=0.5*(_Qdiverted+_QdivLast)*dt;
-  
+
   _channel_storage+=dV;//[m3]
 
   //Update rivulet storage

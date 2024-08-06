@@ -273,7 +273,7 @@ double CEnthalpyModel::GetEnergyLossesFromLake(const int p, double &Q_sens, doub
 
   CHydroUnit*   pHRU=_pModel->GetHydroUnit(pRes->GetHRUIndex());
 
-  double Acorr=pHRU->GetArea()*M2_PER_KM2/A_avg; //handles the fact that GetAET() returns mm/d normalized by HRU area, not actual area
+  double Acorr=1.0;
 
   double SW(0), LW(0), LW_in(0), temp_air(0), AET(0);
   double hstar(0),ksed(0),Vsed=0.001;
@@ -283,6 +283,9 @@ double CEnthalpyModel::GetEnergyLossesFromLake(const int p, double &Q_sens, doub
   double Ts_old=ConvertVolumetricEnthalpyToTemperature(_aMsed_last[p] / Vsed );
 
   if(pHRU!=NULL) { //otherwise only simulate advective mixing+ rain input
+
+    Acorr    =pHRU->GetArea()*M2_PER_KM2/A_avg; //handles the fact that GetAET() returns mm/d normalized by HRU area, not actual area
+
     temp_air =pHRU->GetForcingFunctions()->temp_ave;           //[C]
     SW       =pHRU->GetForcingFunctions()->SW_radia_net;       //[MJ/m2/d] - not using canopy correction!
     LW_in    =pHRU->GetForcingFunctions()->LW_incoming;        //[MJ/m2/d]
@@ -340,13 +343,15 @@ void   CEnthalpyModel::RouteMassInReservoir   (const int          p,          //
 
   CHydroUnit*   pHRU=_pModel->GetHydroUnit(pRes->GetHRUIndex());
 
-  double Acorr=pHRU->GetArea()*M2_PER_KM2/A_avg; //handles the fact that GetAET() returns mm/d normalized by HRU area, not actual area
+  double Acorr=1.0;
 
   double T_old    =ConvertVolumetricEnthalpyToTemperature(_aMres_last[p]/V_old);
 
   double SW(0), LW(0), LW_in(0), temp_air(0), AET(0);
   double hstar(0), ksed(0), Vsed=0.001;
   if(pHRU!=NULL) { //otherwise only simulate advective mixing+ rain input
+    Acorr    =pHRU->GetArea()*M2_PER_KM2/A_avg; //handles the fact that GetAET() returns mm/d normalized by HRU area, not actual area
+
     temp_air =pHRU->GetForcingFunctions()->temp_ave;           //[C]
     SW       =pHRU->GetForcingFunctions()->SW_radia_net;       //[MJ/m2/d]
     LW_in    =pHRU->GetForcingFunctions()->LW_incoming;        //[MJ/m2/d]
@@ -457,7 +462,7 @@ void   CEnthalpyModel::RouteMassInReservoir   (const int          p,          //
 double CEnthalpyModel::GetNetReachLosses(const int p)
 {
   double Q_sens,Q_cond,Q_lat,Q_GW,Q_rad_in,Q_lw_in,Q_lw_out, Q_fric,Qtot,Tave;
-  double Q=_pModel->GetSubBasin(p)->GetOutflowArray()[0];
+  double Q=_pModel->GetSubBasin(p)->GetOutflowArray()[_pModel->GetSubBasin(p)->GetNumSegments()-1];
   if (Q<REAL_SMALL){return 0;}
   Qtot=GetEnergyLossesFromReach(p,Q_sens,Q_cond,Q_lat,Q_GW,Q_rad_in,Q_lw_in,Q_lw_out,Q_fric,Tave);
   _aTave_reach[p]=Tave;
@@ -542,7 +547,7 @@ void CEnthalpyModel::Initialize(const optStruct& Options)
       const double *aQin=pBasin->GetInflowHistory();
       for(int i=0; i<pBasin->GetNumSegments(); i++)
       {
-        _aMout[p][i]=pBasin->GetOutflowArray()[0] * SEC_PER_DAY * hv; //not really - requires outflow rate from all segments in general case. Don't have access to this. assumes nSegs=1
+        _aMout[p][i]=pBasin->GetOutflowArray()[_pModel->GetSubBasin(p)->GetNumSegments()-1] * SEC_PER_DAY * hv; //not really - requires outflow rate from all segments in general case. Don't have access to this. assumes nSegs=1
       }
       _aMout_last[p]=_aMout[p][0];
       for(int i=0; i<_nMinHist[p]; i++)
@@ -645,7 +650,7 @@ void   CEnthalpyModel::UpdateReachEnergySourceTerms(const int p)
   double SW       =pHRU->GetForcingFunctions()->SW_subcan_net;       //[MJ/m2/d]
   double LW_in    =pHRU->GetForcingFunctions()->LW_incoming;        //[MJ/m2/d]
   double AET      =pHRU->GetStateVarValue(iAET)/MM_PER_METER/tstep; //[m/d]
-  
+
   double temp_bed =_aBedTemp[p];
   double temp_lin =GetOutflowConcentration(p)+ZERO_CELSIUS; //[K]
 
@@ -663,7 +668,7 @@ void   CEnthalpyModel::UpdateReachEnergySourceTerms(const int p)
   double klin     =4.0*STEFAN_BOLTZ*EMISS_WATER*pow(temp_lin,3.0);
   double kprime   =qmix*bed_ratio*HCP_WATER;                  //[MJ/m2/d/K]
 
-  double Qf       =GetReachFrictionHeat(pBasin->GetOutflowArray()[0],pBasin->GetBedslope(),pBasin->GetTopWidth());//[MJ/m2/d]
+  double Qf       =GetReachFrictionHeat(pBasin->GetOutflowArray()[pBasin->GetNumSegments()-1],pBasin->GetBedslope(),pBasin->GetTopWidth());//[MJ/m2/d]
 
   double S(0.0);                          //source term [MJ/m3/d]
   S+=(SW+LW_in);                          //net incoming energy term
@@ -773,7 +778,7 @@ double CEnthalpyModel::GetEnergyLossesFromReach(const int p,double &Q_sens,doubl
   double klin     =4.0*STEFAN_BOLTZ*EMISS_WATER*pow(temp_lin,3.0); //[MJ/m2/d/K]
   double kprime   =qmix*HCP_WATER*bed_ratio;                       //[MJ/m2/d/K]
 
-  double Qf       =GetReachFrictionHeat(pBasin->GetOutflowArray()[0],pBasin->GetBedslope(),pBasin->GetTopWidth());//[MJ/m2/d]
+  double Qf       =GetReachFrictionHeat(pBasin->GetOutflowArray()[pBasin->GetNumSegments()-1], pBasin->GetBedslope(), pBasin->GetTopWidth());//[MJ/m2/d]
 
   const double * aRouteHydro=pBasin->GetRoutingHydrograph();
   const double * aQin       =pBasin->GetInflowHistory();
@@ -878,14 +883,14 @@ double CEnthalpyModel::GetEnergyLossesInTransit(const int p, double& Q_sens, dou
                                         hin_hist[m+2-1],
                                         beta, tstep);
       dA=1.0/k*aUnitHydro[k];
-      Q_sens   +=dA*_aInCatch_a[p]*(temp_air-Tbar_km);   //[MJ/d/K]*[K]=[MJ/d]
-      Q_GW     +=dA*_aInCatch_b[p]*(temp_GW -Tbar_km);
+      Q_sens   +=dA*_aInCatch_a[p]*HCP_WATER*(temp_air-Tbar_km);   //[MJ/m3/K]*[1/d]*[K]=[MJ/m3/d]
+      Q_GW     +=dA*_aInCatch_b[p]*HCP_WATER*(temp_GW -Tbar_km);
     }
   }
 
   delete[] hin_hist;
 
-  return -(Q_sens+Q_GW)*tstep;
+  return -(Q_sens+Q_GW)*tstep; //[MJ]
 
 }
 //////////////////////////////////////////////////////////////////
@@ -909,7 +914,7 @@ double CEnthalpyModel::ApplyInCatchmentRouting (const int     p,
   beta=max(beta,1e-9); //to avoid divide by zero error
 
   double Mout_new_test=0;
-  
+
   double Mout_new=0.0;
   double dt=tstep;
   double term1,term2,term3;
@@ -1132,14 +1137,14 @@ void CEnthalpyModel::WriteMinorOutput(const optStruct& Options,const time_struct
     if ((pSB->IsGauged()) && (pSB->IsEnabled()))
     {
       mult = 1.0 / pSB->GetReachLength() / pSB->GetTopWidth();//convert everything to MJ/m2/d
-      if ((pSB->GetReachLength()==0) || (pSB->GetTopWidth()==0)){mult=0.0;}
+      if ((pSB->GetReachLength()<REAL_SMALL) || (pSB->GetTopWidth()<REAL_SMALL)){mult=0.0;}
 
       Ein  = 0.5 * (_aMinHist  [p][0] + _aMinHist[p][1]);
       Eout = 0.5 * (_aMout_last[p]    + _aMout   [p][pSB->GetNumSegments() - 1]);
       GetEnergyLossesFromReach(p, Q_sens, Q_cond, Q_lat, Q_GW, Q_sw_in,Q_lw_in,Q_lw_out, Q_fric, Tave);
 
       if ((pSB->GetTopWidth() < REAL_SMALL) || ( pSB->IsHeadwater())){//running dry or no reach
-        _STREAMOUT << ",,,,,,,,,,";
+        _STREAMOUT << ",,,,,,,,,,,";
       }
       else {
         _STREAMOUT << mult * Ein    << "," << mult * Eout     << ",";
@@ -1176,7 +1181,7 @@ void CEnthalpyModel::WriteMinorOutput(const optStruct& Options,const time_struct
           Ein  = 0.5 * (_aMout_last[p] + _aMout[p][_pModel->GetSubBasin(p)->GetNumSegments() - 1]);
           Eout = 0.5 * (_aMout_res [p] + _aMout_res_last[p]);
 
-          double Qin=_pModel->GetSubBasin(p)->GetOutflowArray()[0]*SEC_PER_DAY; //[m3/d]
+          double Qin=_pModel->GetSubBasin(p)->GetOutflowArray()[_pModel->GetSubBasin(p)->GetNumSegments()-1]*SEC_PER_DAY; //[m3/d]
 
           GetEnergyLossesFromLake(p,Q_sens,Q_cond,Q_lat,Q_sw_in,Q_lw_in,Q_lw_out,Q_rain);
 
